@@ -7,8 +7,8 @@ const MIN_WITHDRAW = 0.05;
 
 // ⚠️ မင်း Join ခိုင်းချင်တဲ့ Sponsor Channel စာရင်း (Bot ကို Admin ပေးထားရပါမယ်)
 const SPONSORS = [
-  { chat_id: "@channel1", url: "https://t.me/channel1" },
-  { chat_id: "@channel2", url: "https://t.me/channel2" }
+  { chat_id: "@nexora_mining", url: "https://t.me/nexora_mining" },
+  { chat_id: "@DargonGolden", url: "https://t.me/DargonGolden" }
 ];
 
 export default async function handler(req, res) {
