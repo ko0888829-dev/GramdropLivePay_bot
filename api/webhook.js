@@ -1,18 +1,18 @@
 const BOT_TOKEN = "9023565157:AAF-iDx4vljv9BreU10jrf0WEZnkvp_6dVc";
 const ADMIN_ID = "5330848428";
-const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/usdt_drop_bot";
+const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/gramdrop_bot";
 
+// ⚠️ GRAM ပမာဏ ချိန်ညှိရန် (လက်ရှိ: 1 Refer = 0.01 GRAM, Min Withdraw = 0.1 GRAM)
 const PER_REFER = 0.01;
-const MIN_WITHDRAW = 0.05;
+const MIN_WITHDRAW = 0.1;
 
-// ⚠️ မင်း Join ခိုင်းချင်တဲ့ Sponsor Channel စာရင်း (Bot ကို Admin ပေးထားရပါမယ်)
+// Sponsor Channel စာရင်း (Bot ကို Channel မှာ Admin ပေးထားရပါမယ်)
 const SPONSORS = [
-  { chat_id: "@nexora_mining", url: "https://t.me/nexora_mining" },
-  { chat_id: "@DargonGolden", url: "https://t.me/DargonGolden" }
+  { chat_id: "@nexora_mining", url: "https://t.me/nexora_mining" }
 ];
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(200).send("USDT Drop Bot is Active!");
+  if (req.method !== "POST") return res.status(200).send("Gramdrop Live Pay Bot is Active!");
 
   try {
     const update = req.body;
@@ -40,14 +40,14 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: true });
         }
 
-        // Sponsor အကုန် Join ပြီးသွားရင် Referrer ကို 0.01 USDT + 1 Refer တိုးပေးမယ်
+        // Sponsor Join ပြီးသွားရင် Referrer ကို GRAM + 1 Refer တိုးပေးမယ်
         const user = await firebaseRequest(`users/${userId}`);
         if (user && user.referred_by && !user.reward_credited) {
           const refId = String(user.referred_by);
           const refData = await firebaseRequest(`users/${refId}`);
 
           if (refData) {
-            const newBal = Number((Number(refData.balance || 0) + PER_REFER).toFixed(4));
+            const newBal = Number((Number(refData.balance || 0) + PER_REFER).toFixed(2));
             const newRefs = Number(refData.refers || 0) + 1;
 
             await firebaseRequest(`users/${refId}`, "PATCH", {
@@ -63,11 +63,11 @@ export default async function handler(req, res) {
               refId,
               `🎊 <b>New Referral Verified!</b>\n\n` +
               `👤 Joined: <b>${firstName}</b>\n` +
-              `💵 Earned: <b>+${PER_REFER} USDT</b>\n` +
+              `💎 Earned: <b>+${PER_REFER} GRAM</b>\n` +
               `👥 Total Invites: <b>${newRefs}</b>`
             );
 
-            // Admin ဆီကိုပါ Notification ပို့မယ်
+            // Admin ဆီ Notification ပို့မယ်
             await sendMessage(
               ADMIN_ID,
               `🚨 <b>Verified Referral!</b>\n` +
@@ -81,8 +81,8 @@ export default async function handler(req, res) {
         await sendMessage(
           chatId,
           `🎉 <b>Verification Complete!</b>\n\n` +
-          `💵 Per Refer: <b>${PER_REFER} USDT</b>\n` +
-          `💳 Minimum Withdraw: <b>${MIN_WITHDRAW} USDT</b> (BEP20)`,
+          `💎 Per Refer: <b>${PER_REFER} GRAM</b>\n` +
+          `💳 Minimum Withdraw: <b>${MIN_WITHDRAW} GRAM</b> (TON Wallet)`,
           mainMenuKeyboard()
         );
         return res.status(200).json({ ok: true });
@@ -94,7 +94,7 @@ export default async function handler(req, res) {
         await editMessageText(chatId, msgId, cb.message.text + "\n\n✅ <b>PAID</b>");
         await sendMessage(
           uid,
-          `🎉 <b>Payment Sent!</b>\nYou have received <b>+${amount} USDT</b> on your BEP20 wallet.`
+          `🎉 <b>Payment Sent!</b>\nYou have received <b>+${amount} GRAM</b> on your TON wallet.`
         );
         await answerCallback(cbId, "Marked as Paid!");
         return res.status(200).json({ ok: true });
@@ -104,10 +104,10 @@ export default async function handler(req, res) {
       if (data.startsWith("reject_") && userId === ADMIN_ID) {
         const [, uid, amount] = data.split("_");
         const targetUser = (await firebaseRequest(`users/${uid}`)) || {};
-        const refund = Number((Number(targetUser.balance || 0) + Number(amount)).toFixed(4));
+        const refund = Number((Number(targetUser.balance || 0) + Number(amount)).toFixed(2));
         await firebaseRequest(`users/${uid}`, "PATCH", { balance: refund });
         await editMessageText(chatId, msgId, cb.message.text + "\n\n❌ <b>REJECTED & REFUNDED</b>");
-        await sendMessage(uid, `❌ Your withdrawal of <b>${amount} USDT</b> was rejected and refunded to your balance.`);
+        await sendMessage(uid, `❌ Your withdrawal of <b>${amount} GRAM</b> was rejected and refunded to your balance.`);
         await answerCallback(cbId, "Rejected & Refunded!");
         return res.status(200).json({ ok: true });
       }
@@ -167,7 +167,7 @@ export default async function handler(req, res) {
           user_id: userId,
           full_name: fullName,
           username: username,
-          balance: 0.0,
+          balance: 0,
           refers: 0,
           referred_by: validRef,
           reward_credited: false,
@@ -198,12 +198,12 @@ export default async function handler(req, res) {
     // --- MENU BUTTONS ---
     if (text === "💰 Balance") {
       const u = (await firebaseRequest(`users/${userId}`)) || {};
-      const bal = Number(u.balance || 0).toFixed(2);
+      const bal = Number(u.balance || 0);
       const refs = Number(u.refers || 0);
       await sendMessage(
         chatId,
         `👤 <b>User:</b> ${firstName}\n` +
-        `💰 <b>Balance:</b> <code>${bal} USDT</code>\n` +
+        `💎 <b>Balance:</b> <code>${bal} GRAM</code>\n` +
         `👥 <b>Total Invites:</b> ${refs} users`
       );
       return res.status(200).json({ ok: true });
@@ -218,16 +218,16 @@ export default async function handler(req, res) {
         inline_keyboard: [[
           {
             text: "📤 Share Invite Link",
-            url: `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent("Join & Earn Free USDT!")}`
+            url: `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent("Join & Earn Free GRAM Tokens!")}`
           }
         ]]
       };
 
       await sendMessage(
         chatId,
-        `🔥 <b>Invite Friends & Earn Unlimited USDT!</b>\n\n` +
-        `💵 <b>Per Refer:</b> ${PER_REFER} USDT\n` +
-        `💳 <b>Minimum Withdraw:</b> ${MIN_WITHDRAW} USDT (5 Refers)\n\n` +
+        `🔥 <b>Invite Friends & Earn Unlimited GRAM!</b>\n\n` +
+        `💎 <b>Per Refer:</b> ${PER_REFER} GRAM\n` +
+        `💳 <b>Minimum Withdraw:</b> ${MIN_WITHDRAW} GRAM (${Math.ceil(MIN_WITHDRAW / PER_REFER)} Refers)\n\n` +
         `🔗 <b>Your Offer Link:</b>\n<code>${refLink}</code>`,
         shareBtn
       );
@@ -238,10 +238,10 @@ export default async function handler(req, res) {
       await sendMessage(
         chatId,
         `📌 <b>Bot Rules & Info</b>\n\n` +
-        `• Per Refer: <b>${PER_REFER} USDT</b>\n` +
-        `• Minimum Withdraw: <b>${MIN_WITHDRAW} USDT</b>\n` +
-        `• 5 Refer And Withdraw Unlimited 🔥\n` +
-        `• Payment Instant BEP20 Address\n` +
+        `• Per Refer: <b>${PER_REFER} GRAM</b>\n` +
+        `• Minimum Withdraw: <b>${MIN_WITHDRAW} GRAM</b>\n` +
+        `• ${Math.ceil(MIN_WITHDRAW / PER_REFER)} Refer And Withdraw Unlimited 🔥\n` +
+        `• Payment Instant TON Wallet Address\n` +
         `• Don't unsubscribe sponsors within 48 hours.`
       );
       return res.status(200).json({ ok: true });
@@ -255,8 +255,8 @@ export default async function handler(req, res) {
         await sendMessage(
           chatId,
           `❌ <b>Insufficient Balance!</b>\n` +
-          `Minimum withdraw is <b>${MIN_WITHDRAW} USDT</b>.\n` +
-          `Your balance: <code>${bal.toFixed(2)} USDT</code>`
+          `Minimum withdraw is <b>${MIN_WITHDRAW} GRAM</b>.\n` +
+          `Your balance: <code>${bal} GRAM</code>`
         );
         return res.status(200).json({ ok: true });
       }
@@ -264,26 +264,27 @@ export default async function handler(req, res) {
       await firebaseRequest(`users/${userId}`, "PATCH", { step: "awaiting_wallet" });
       await sendMessage(
         chatId,
-        "💳 Please send your <b>USDT (BEP20) Wallet Address</b>:\n" +
-        "<i>(Must start with 0x... and be 42 characters)</i>"
+        "💳 Please send your <b>TON Wallet Address</b> (Tonkeeper / Telegram Wallet):\n" +
+        "<i>(Must start with UQ... or EQ... and be 48 characters)</i>"
       );
       return res.status(200).json({ ok: true });
     }
 
-    // --- BEP20 WALLET ADDRESS INPUT ---
+    // --- TON WALLET ADDRESS INPUT ---
     const currentUser = await firebaseRequest(`users/${userId}`);
     if (currentUser && currentUser.step === "awaiting_wallet") {
-      if (!/^0x[a-fA-F0-9]{40}$/.test(text)) {
+      // TON Address စစ်ဆေးခြင်း (UQ သို့မဟုတ် EQ နဲ့ စပြီး 48 လုံး ရှိရပါမယ်)
+      if (!/^(UQ|EQ)[a-zA-Z0-9_-]{46}$/.test(text)) {
         await sendMessage(
           chatId,
-          "⚠️ Invalid BEP20 address! Please enter a valid <code>0x...</code> address:"
+          "⚠️ Invalid TON Wallet address! Please enter a valid <code>UQ...</code> or <code>EQ...</code> address:"
         );
         return res.status(200).json({ ok: true });
       }
 
-      const amount = Number(Number(currentUser.balance || 0).toFixed(4));
+      const amount = Number(currentUser.balance || 0);
       await firebaseRequest(`users/${userId}`, "PATCH", {
-        balance: 0.0,
+        balance: 0,
         step: "idle",
         wallet: text
       });
@@ -291,8 +292,8 @@ export default async function handler(req, res) {
       await sendMessage(
         chatId,
         `✅ <b>Withdrawal Request Submitted!</b>\n\n` +
-        `💰 <b>Amount:</b> ${amount} USDT\n` +
-        `🌐 <b>Network:</b> BEP20\n` +
+        `💎 <b>Amount:</b> ${amount} GRAM\n` +
+        `🌐 <b>Network:</b> TON Network\n` +
         `💳 <b>Address:</b> <code>${text}</code>\n` +
         `⏳ Status: <b>Processing...</b>`
       );
@@ -306,10 +307,10 @@ export default async function handler(req, res) {
 
       await sendMessage(
         ADMIN_ID,
-        `🔔 <b>New Withdraw Request</b>\n\n` +
+        `🔔 <b>New GRAM Withdraw Request</b>\n\n` +
         `👤 User: ${fullName} (<code>${userId}</code>)\n` +
-        `💰 Amount: <b>${amount} USDT</b>\n` +
-        `💳 BEP20: <code>${text}</code>`,
+        `💎 Amount: <b>${amount} GRAM</b>\n` +
+        `💳 TON Wallet: <code>${text}</code>`,
         adminKb
       );
       return res.status(200).json({ ok: true });
