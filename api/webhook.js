@@ -3,7 +3,7 @@ const ADMIN_ID = "5330848428";
 const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/gramdrop_bot";
 
 // ⚠️ GRAM ပမာဏ ချိန်ညှိရန် (လက်ရှိ: 1 Refer = 0.01 GRAM, Min Withdraw = 0.1 GRAM)
-const PER_REFER = 0.01;
+const PER_REFER = 1;
 const MIN_WITHDRAW = 0.1;
 
 // Sponsor Channel စာရင်း (Bot ကို Channel မှာ Admin ပေးထားရပါမယ်)
