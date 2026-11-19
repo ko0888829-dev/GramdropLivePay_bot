@@ -2,7 +2,7 @@ const BOT_TOKEN = "9023565157:AAF-iDx4vljv9BreU10jrf0WEZnkvp_6dVc";
 const ADMIN_ID = "5330848428";
 const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/gramdrop_bot";
 
-const PER_REFER = 0.01;
+const PER_REFER = 1;
 const MIN_WITHDRAW = 0.1;
 
 // ⚠️ အောက်က Channel / Group ၇ ခုလုံးမှာ ဒီ Bot ကို Admin ပေးထားဖို့ မမေ့ပါနဲ့
