@@ -2,13 +2,18 @@ const BOT_TOKEN = "9023565157:AAF-iDx4vljv9BreU10jrf0WEZnkvp_6dVc";
 const ADMIN_ID = "5330848428";
 const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/gramdrop_bot";
 
-// ⚠️ GRAM ပမာဏ ချိန်ညှိရန် (လက်ရှိ: 1 Refer = 0.01 GRAM, Min Withdraw = 0.1 GRAM)
-const PER_REFER = 1;
+const PER_REFER = 0.01;
 const MIN_WITHDRAW = 0.1;
 
-// Sponsor Channel စာရင်း (Bot ကို Channel မှာ Admin ပေးထားရပါမယ်)
+// ⚠️ အောက်က Channel / Group ၇ ခုလုံးမှာ ဒီ Bot ကို Admin ပေးထားဖို့ မမေ့ပါနဲ့
 const SPONSORS = [
-  { chat_id: "@nexora_mining", url: "https://t.me/nexora_mining" }
+  { chat_id: "@refferal_X", url: "https://t.me/refferal_X" },
+  { chat_id: "@DargonGolden", url: "https://t.me/DargonGolden" },
+  { chat_id: "@rainX1", url: "https://t.me/rainX1" },
+  { chat_id: "@G15Am", url: "https://t.me/G15Am" },
+  { chat_id: "@liezyXcrypto", url: "https://t.me/liezyXcrypto" },
+  { chat_id: "@CryptoXMinerpro", url: "https://t.me/CryptoXMinerpro" },
+  { chat_id: "@earning2706", url: "https://t.me/earning2706" }
 ];
 
 export default async function handler(req, res) {
@@ -29,7 +34,7 @@ export default async function handler(req, res) {
       const firstName = cb.from.first_name || "User";
       const data = cb.data;
 
-      // (က) ✅ DONE SPONSORS ခလုတ်နှိပ်ရင်
+      // ✅ DONE SPONSORS ခလုတ်နှိပ်ရင်
       if (data === "check_sponsors") {
         const unjoined = await getUnjoinedSponsors(userId);
 
@@ -40,42 +45,8 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: true });
         }
 
-        // Sponsor Join ပြီးသွားရင် Referrer ကို GRAM + 1 Refer တိုးပေးမယ်
-        const user = await firebaseRequest(`users/${userId}`);
-        if (user && user.referred_by && !user.reward_credited) {
-          const refId = String(user.referred_by);
-          const refData = await firebaseRequest(`users/${refId}`);
-
-          if (refData) {
-            const newBal = Number((Number(refData.balance || 0) + PER_REFER).toFixed(2));
-            const newRefs = Number(refData.refers || 0) + 1;
-
-            await firebaseRequest(`users/${refId}`, "PATCH", {
-              balance: newBal,
-              refers: newRefs
-            });
-            await firebaseRequest(`users/${userId}`, "PATCH", {
-              reward_credited: true
-            });
-
-            // ဖိတ်ခေါ်သူဆီ အသိပေးမယ်
-            await sendMessage(
-              refId,
-              `🎊 <b>New Referral Verified!</b>\n\n` +
-              `👤 Joined: <b>${firstName}</b>\n` +
-              `💎 Earned: <b>+${PER_REFER} GRAM</b>\n` +
-              `👥 Total Invites: <b>${newRefs}</b>`
-            );
-
-            // Admin ဆီ Notification ပို့မယ်
-            await sendMessage(
-              ADMIN_ID,
-              `🚨 <b>Verified Referral!</b>\n` +
-              `🔗 Inviter: <code>${refId}</code> (Total: <b>${newRefs}</b>)\n` +
-              `👤 New User: ${firstName} (<code>${userId}</code>)`
-            );
-          }
-        }
+        // Sponsor အကုန် Join ပြီးရင် Referrer ကို Reward ပေါင်းပေးမယ်
+        await creditReferralReward(userId, firstName);
 
         await deleteMessage(chatId, msgId);
         await sendMessage(
@@ -88,7 +59,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // (ခ) ADMIN MARK PAID ခလုတ်နှိပ်ရင်
+      // ADMIN MARK PAID
       if (data.startsWith("paid_") && userId === ADMIN_ID) {
         const [, uid, amount] = data.split("_");
         await editMessageText(chatId, msgId, cb.message.text + "\n\n✅ <b>PAID</b>");
@@ -100,14 +71,14 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // (ဂ) ADMIN REJECT ခလုတ်နှိပ်ရင်
+      // ADMIN REJECT
       if (data.startsWith("reject_") && userId === ADMIN_ID) {
         const [, uid, amount] = data.split("_");
         const targetUser = (await firebaseRequest(`users/${uid}`)) || {};
-        const refund = Number((Number(targetUser.balance || 0) + Number(amount)).toFixed(2));
+        const refund = Number((Number(targetUser.balance || 0) + Number(amount)).toFixed(4));
         await firebaseRequest(`users/${uid}`, "PATCH", { balance: refund });
         await editMessageText(chatId, msgId, cb.message.text + "\n\n❌ <b>REJECTED & REFUNDED</b>");
-        await sendMessage(uid, `❌ Your withdrawal of <b>${amount} GRAM</b> was rejected and refunded to your balance.`);
+        await sendMessage(uid, `❌ Your withdrawal of <b>${amount} GRAM</b> was rejected and refunded.`);
         await answerCallback(cbId, "Rejected & Refunded!");
         return res.status(200).json({ ok: true });
       }
@@ -160,10 +131,10 @@ export default async function handler(req, res) {
       const parts = text.split(" ");
       const refCode = parts.length > 1 && /^\d+$/.test(parts[1]) ? parts[1] : null;
 
-      const existingUser = await firebaseRequest(`users/${userId}`);
+      let existingUser = await firebaseRequest(`users/${userId}`);
       if (!existingUser) {
         const validRef = refCode && refCode !== userId ? refCode : null;
-        await firebaseRequest(`users/${userId}`, "PUT", {
+        existingUser = {
           user_id: userId,
           full_name: fullName,
           username: username,
@@ -173,7 +144,8 @@ export default async function handler(req, res) {
           reward_credited: false,
           step: "idle",
           joined_at: new Date().toISOString()
-        });
+        };
+        await firebaseRequest(`users/${userId}`, "PUT", existingUser);
 
         await sendMessage(
           ADMIN_ID,
@@ -186,6 +158,9 @@ export default async function handler(req, res) {
         const { text: spText, markup } = buildSponsorUI(firstName, unjoined);
         await sendMessage(chatId, spText, markup);
       } else {
+        // Sponsor အကုန် Join ပြီးသား ဖြစ်နေရင်လည်း Referrer ကို တစ်ခါတည်း Reward ပေါင်းပေးမယ်
+        await creditReferralReward(userId, firstName);
+
         await sendMessage(
           chatId,
           `🎉 Welcome back, <b>${firstName}</b>!`,
@@ -198,7 +173,7 @@ export default async function handler(req, res) {
     // --- MENU BUTTONS ---
     if (text === "💰 Balance") {
       const u = (await firebaseRequest(`users/${userId}`)) || {};
-      const bal = Number(u.balance || 0);
+      const bal = Number(Number(u.balance || 0).toFixed(2));
       const refs = Number(u.refers || 0);
       await sendMessage(
         chatId,
@@ -273,7 +248,6 @@ export default async function handler(req, res) {
     // --- TON WALLET ADDRESS INPUT ---
     const currentUser = await firebaseRequest(`users/${userId}`);
     if (currentUser && currentUser.step === "awaiting_wallet") {
-      // TON Address စစ်ဆေးခြင်း (UQ သို့မဟုတ် EQ နဲ့ စပြီး 48 လုံး ရှိရပါမယ်)
       if (!/^(UQ|EQ)[a-zA-Z0-9_-]{46}$/.test(text)) {
         await sendMessage(
           chatId,
@@ -282,7 +256,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      const amount = Number(currentUser.balance || 0);
+      const amount = Number(Number(currentUser.balance || 0).toFixed(4));
       await firebaseRequest(`users/${userId}`, "PATCH", {
         balance: 0,
         step: "idle",
@@ -320,6 +294,43 @@ export default async function handler(req, res) {
   }
 
   return res.status(200).json({ ok: true });
+}
+
+// --- REFERRAL REWARD FUNCTION ---
+async function creditReferralReward(userId, firstName) {
+  const user = await firebaseRequest(`users/${userId}`);
+  if (user && user.referred_by && !user.reward_credited) {
+    const refId = String(user.referred_by);
+    const refData = await firebaseRequest(`users/${refId}`);
+
+    if (refData) {
+      const newBal = Number((Number(refData.balance || 0) + PER_REFER).toFixed(4));
+      const newRefs = Number(refData.refers || 0) + 1;
+
+      await firebaseRequest(`users/${refId}`, "PATCH", {
+        balance: newBal,
+        refers: newRefs
+      });
+      await firebaseRequest(`users/${userId}`, "PATCH", {
+        reward_credited: true
+      });
+
+      await sendMessage(
+        refId,
+        `🎊 <b>New Referral Verified!</b>\n\n` +
+        `👤 Joined: <b>${firstName}</b>\n` +
+        `💎 Earned: <b>+${PER_REFER} GRAM</b>\n` +
+        `👥 Total Invites: <b>${newRefs}</b>`
+      );
+
+      await sendMessage(
+        ADMIN_ID,
+        `🚨 <b>Verified Referral!</b>\n` +
+        `🔗 Inviter: <code>${refId}</code> (Total: <b>${newRefs}</b>)\n` +
+        `👤 New User: ${firstName} (<code>${userId}</code>)`
+      );
+    }
+  }
 }
 
 // --- SPONSOR HELPERS ---
