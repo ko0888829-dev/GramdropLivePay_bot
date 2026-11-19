@@ -2,10 +2,9 @@ const BOT_TOKEN = "9023565157:AAF-iDx4vljv9BreU10jrf0WEZnkvp_6dVc";
 const ADMIN_ID = "5330848428";
 const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/gramdrop_bot";
 
-const PER_REFER = 1;
+const PER_REFER = 0.01;
 const MIN_WITHDRAW = 0.1;
 
-// ⚠️ အောက်က Channel / Group ၇ ခုလုံးမှာ ဒီ Bot ကို Admin ပေးထားဖို့ မမေ့ပါနဲ့
 const SPONSORS = [
   { chat_id: "@refferal_X", url: "https://t.me/refferal_X" },
   { chat_id: "@DargonGolden", url: "https://t.me/DargonGolden" },
@@ -14,6 +13,16 @@ const SPONSORS = [
   { chat_id: "@liezyXcrypto", url: "https://t.me/liezyXcrypto" },
   { chat_id: "@CryptoXMinerpro", url: "https://t.me/CryptoXMinerpro" },
   { chat_id: "@earning2706", url: "https://t.me/earning2706" }
+];
+
+// Human Verification အတွက် Emoji စာရင်း
+const CAPTCHA_ITEMS = [
+  { name: "DIAMOND 💎", icon: "💎" },
+  { name: "ROCKET 🚀", icon: "🚀" },
+  { name: "FIRE 🔥", icon: "🔥" },
+  { name: "CROWN 👑", icon: "👑" },
+  { name: "TROPHY 🏆", icon: "🏆" },
+  { name: "STAR ⭐", icon: "⭐" }
 ];
 
 export default async function handler(req, res) {
@@ -34,7 +43,7 @@ export default async function handler(req, res) {
       const firstName = cb.from.first_name || "User";
       const data = cb.data;
 
-      // ✅ DONE SPONSORS ခလုတ်နှိပ်ရင်
+      // (က) ✅ DONE SPONSORS ခလုတ်နှိပ်ရင် -> Anti-Fake Captcha စစ်မယ်
       if (data === "check_sponsors") {
         const unjoined = await getUnjoinedSponsors(userId);
 
@@ -45,13 +54,48 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: true });
         }
 
-        // Sponsor အကုန် Join ပြီးရင် Referrer ကို Reward ပေါင်းပေးမယ်
+        // Sponsor အကုန် Join ပြီးရင် Fake Bot မဟုတ်ကြောင်း Captcha စစ်မယ်
+        const user = await firebaseRequest(`users/${userId}`);
+        if (user && !user.human_verified) {
+          const { text, markup, answerIcon } = buildCaptchaUI();
+          await firebaseRequest(`users/${userId}`, "PATCH", { captcha_answer: answerIcon });
+          await editMessageText(chatId, msgId, text, markup);
+          await answerCallback(cbId, "Please complete the human check!");
+          return res.status(200).json({ ok: true });
+        }
+
+        // Verify ပြီးသားဆိုရင် Main Menu ပေးမယ်
+        await deleteMessage(chatId, msgId);
+        await sendMessage(chatId, `🎉 Welcome back, <b>${firstName}</b>!`, mainMenuKeyboard());
+        return res.status(200).json({ ok: true });
+      }
+
+      // (ခ) ANTI-FAKE CAPTCHA ခလုတ်နှိပ်ရင်
+      if (data.startsWith("cap_")) {
+        const pickedIcon = data.replace("cap_", "");
+        const user = await firebaseRequest(`users/${userId}`);
+
+        if (!user || user.captcha_answer !== pickedIcon) {
+          // မှားနှိပ်ရင် Captcha အသစ်ပြန်ထုတ်ပေးမယ်
+          await answerCallback(cbId, "❌ Wrong icon! Fake/Bot check failed. Try again!", true);
+          const { text, markup, answerIcon } = buildCaptchaUI();
+          await firebaseRequest(`users/${userId}`, "PATCH", { captcha_answer: answerIcon });
+          await editMessageText(chatId, msgId, text, markup);
+          return res.status(200).json({ ok: true });
+        }
+
+        // မှန်သွားရင် Human Verified ဖြစ်ပြီ -> Referrer ကို Reward ပေါင်းပေးမယ်
+        await firebaseRequest(`users/${userId}`, "PATCH", {
+          human_verified: true,
+          captcha_answer: null
+        });
+
         await creditReferralReward(userId, firstName);
 
         await deleteMessage(chatId, msgId);
         await sendMessage(
           chatId,
-          `🎉 <b>Verification Complete!</b>\n\n` +
+          `✅ <b>Human Verification Passed!</b>\n\n` +
           `💎 Per Refer: <b>${PER_REFER} GRAM</b>\n` +
           `💳 Minimum Withdraw: <b>${MIN_WITHDRAW} GRAM</b> (TON Wallet)`,
           mainMenuKeyboard()
@@ -59,7 +103,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // ADMIN MARK PAID
+      // (ဂ) ADMIN MARK PAID
       if (data.startsWith("paid_") && userId === ADMIN_ID) {
         const [, uid, amount] = data.split("_");
         await editMessageText(chatId, msgId, cb.message.text + "\n\n✅ <b>PAID</b>");
@@ -71,7 +115,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // ADMIN REJECT
+      // (ဃ) ADMIN REJECT
       if (data.startsWith("reject_") && userId === ADMIN_ID) {
         const [, uid, amount] = data.split("_");
         const targetUser = (await firebaseRequest(`users/${uid}`)) || {};
@@ -134,39 +178,58 @@ export default async function handler(req, res) {
       let existingUser = await firebaseRequest(`users/${userId}`);
       if (!existingUser) {
         const validRef = refCode && refCode !== userId ? refCode : null;
+
+        // 1, 2, 3, 4... စုစုပေါင်း User နံပါတ်စဉ် ရေတွက်ခြင်း
+        const allUsersObj = await firebaseRequest("users");
+        const userNumber = allUsersObj ? Object.keys(allUsersObj).length + 1 : 1;
+
+        // Fake Account Risk စစ်ဆေးခြင်း (Profile Photo & Username ရှိ/မရှိ)
+        const hasPhoto = await checkUserHasPhoto(userId);
+        const riskFlag = (!hasPhoto && !user.username) ? "⚠️ High Risk (No Photo & No Username)" : "✅ Normal Account";
+
         existingUser = {
+          user_number: userNumber,
           user_id: userId,
           full_name: fullName,
           username: username,
           balance: 0,
           refers: 0,
           referred_by: validRef,
+          human_verified: false,
           reward_credited: false,
           step: "idle",
           joined_at: new Date().toISOString()
         };
         await firebaseRequest(`users/${userId}`, "PUT", existingUser);
 
+        // Admin ဆီ 1, 2, 3, 4... နံပါတ်တပ်ပြီး အသိပေးမယ်
         await sendMessage(
           ADMIN_ID,
-          `👤 <b>New User Joined Bot</b>\nName: ${fullName} (<code>${userId}</code>)\nRef By: <code>${validRef || "Direct"}</code>`
+          `🆕 <b>User #${userNumber} ဝင်လာပါပြီ!</b>\n\n` +
+          `👤 <b>Name:</b> ${fullName}\n` +
+          `🆔 <b>ID:</b> <code>${userId}</code> (${username})\n` +
+          `🔗 <b>Ref By:</b> <code>${validRef || "Direct"}</code>\n` +
+          `🛡️ <b>Account Check:</b> ${riskFlag}`
         );
       }
 
+      // Sponsor Channel စစ်မယ်
       const unjoined = await getUnjoinedSponsors(userId);
       if (unjoined.length > 0) {
         const { text: spText, markup } = buildSponsorUI(firstName, unjoined);
         await sendMessage(chatId, spText, markup);
-      } else {
-        // Sponsor အကုန် Join ပြီးသား ဖြစ်နေရင်လည်း Referrer ကို တစ်ခါတည်း Reward ပေါင်းပေးမယ်
-        await creditReferralReward(userId, firstName);
-
-        await sendMessage(
-          chatId,
-          `🎉 Welcome back, <b>${firstName}</b>!`,
-          mainMenuKeyboard()
-        );
+        return res.status(200).json({ ok: true });
       }
+
+      // Sponsor Join ပြီးသားဖြစ်ပေမယ့် Human Captcha မစစ်ရသေးရင် Captcha ပြမယ်
+      if (!existingUser.human_verified) {
+        const { text: capText, markup, answerIcon } = buildCaptchaUI();
+        await firebaseRequest(`users/${userId}`, "PATCH", { captcha_answer: answerIcon });
+        await sendMessage(chatId, capText, markup);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendMessage(chatId, `🎉 Welcome back, <b>${firstName}</b>!`, mainMenuKeyboard());
       return res.status(200).json({ ok: true });
     }
 
@@ -217,7 +280,7 @@ export default async function handler(req, res) {
         `• Minimum Withdraw: <b>${MIN_WITHDRAW} GRAM</b>\n` +
         `• ${Math.ceil(MIN_WITHDRAW / PER_REFER)} Refer And Withdraw Unlimited 🔥\n` +
         `• Payment Instant TON Wallet Address\n` +
-        `• Don't unsubscribe sponsors within 48 hours.`
+        `• Fake accounts & unsubscribing within 48h will be banned.`
       );
       return res.status(200).json({ ok: true });
     }
@@ -296,6 +359,37 @@ export default async function handler(req, res) {
   return res.status(200).json({ ok: true });
 }
 
+// --- ANTI-FAKE & CAPTCHA HELPERS ---
+async function checkUserHasPhoto(userId) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos?user_id=${userId}&limit=1`);
+    const data = await res.json();
+    return data.ok && data.result.total_count > 0;
+  } catch {
+    return false;
+  }
+}
+
+function buildCaptchaUI() {
+  const shuffled = [...CAPTCHA_ITEMS].sort(() => 0.5 - Math.random()).slice(0, 4);
+  const target = shuffled[Math.floor(Math.random() * shuffled.length)];
+
+  const text =
+    `🛡️ <b>Anti-Bot & Fake Account Verification</b>\n\n` +
+    `To prove you are a real human, tap the <b>${target.name}</b> button below:`;
+
+  const buttons = shuffled.map(item => ({
+    text: item.icon,
+    callback_data: `cap_${item.icon}`
+  }));
+
+  return {
+    text,
+    answerIcon: target.icon,
+    markup: { inline_keyboard: [buttons] }
+  };
+}
+
 // --- REFERRAL REWARD FUNCTION ---
 async function creditReferralReward(userId, firstName) {
   const user = await firebaseRequest(`users/${userId}`);
@@ -320,13 +414,13 @@ async function creditReferralReward(userId, firstName) {
         `🎊 <b>New Referral Verified!</b>\n\n` +
         `👤 Joined: <b>${firstName}</b>\n` +
         `💎 Earned: <b>+${PER_REFER} GRAM</b>\n` +
-        `👥 Total Invites: <b>${newRefs}</b>`
+        `👥 Total Invites: <b>${newRefs}</b> (Referral #${newRefs})`
       );
 
       await sendMessage(
         ADMIN_ID,
-        `🚨 <b>Verified Referral!</b>\n` +
-        `🔗 Inviter: <code>${refId}</code> (Total: <b>${newRefs}</b>)\n` +
+        `🚨 <b>Verified Referral #${newRefs}!</b>\n` +
+        `🔗 Inviter: <code>${refId}</code>\n` +
         `👤 New User: ${firstName} (<code>${userId}</code>)`
       );
     }
