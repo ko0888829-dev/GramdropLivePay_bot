@@ -1,5 +1,5 @@
 {
-  "name": "ref-tracker-bot",
+  "name": "gramdrop-live-pay-bot",
   "version": "1.0.0",
-  "dependencies": {}
+  "private": true
 }
