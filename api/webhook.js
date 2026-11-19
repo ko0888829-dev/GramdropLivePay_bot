@@ -2,6 +2,10 @@ const BOT_TOKEN = "9023565157:AAF-iDx4vljv9BreU10jrf0WEZnkvp_6dVc";
 const ADMIN_ID = "5330848428";
 const FIREBASE_URL = "https://adpro-bot-default-rtdb.firebaseio.com/test_ref_bot";
 
+// ⚠️ /share လို့ ရိုးရိုးရိုက်ရင် အလိုလိုတပ်ပေးမယ့် Default Button နဲ့ Link ကို ဒီမှာထည့်ပါ
+const DEFAULT_BTN_TEXT = "🚀 Open NEXORA Mini App";
+const DEFAULT_BTN_URL = "https://t.me/YourNexoraBot/app"; // မင်းရဲ့ Mini App Link အမှန်ပြောင်းထည့်ပါ
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(200).send("Bot Server is Active!");
@@ -23,26 +27,42 @@ export default async function handler(req, res) {
     const username = user.username ? `@${user.username}` : "Username မရှိပါ";
 
     // ==========================================
-    // ၁။ POST SHARE / BROADCAST (Reply + /share သို့မဟုတ် /send)
+    // ၁။ POST SHARE WITH BUTTON (/share)
     // ==========================================
     if (userId === ADMIN_ID) {
-      // နည်းလမ်း (က) - ပို့ချင်တဲ့ Post/ပုံ/ဗီဒီယို ကို Reply ပြန်ပြီး /share လို့ ရိုက်ရင်
-      if (text === "/share" && msg.reply_to_message) {
+      if (text.startsWith("/share") && msg.reply_to_message) {
         const targetMsgId = msg.reply_to_message.message_id;
-        await broadcastPost(chatId, chatId, targetMsgId);
+        
+        // /share နောက်မှာ "ခလုတ်နာမည် | Link" ပါမပါ စစ်ဆေးခြင်း
+        const extra = text.replace("/share", "").trim();
+        let btnText = DEFAULT_BTN_TEXT;
+        let btnUrl = DEFAULT_BTN_URL;
+
+        if (extra.includes("|")) {
+          const splitParts = extra.split("|");
+          btnText = splitParts[0].trim();
+          btnUrl = splitParts[1].trim();
+        }
+
+        const customButton = {
+          inline_keyboard: [[{ text: btnText, url: btnUrl }]]
+        };
+
+        await broadcastPost(chatId, chatId, targetMsgId, customButton);
         return res.status(200).json({ ok: true });
       }
 
-      // နည်းလမ်း (ခ) - စာသားချည်းပဲ အမြန်ပို့ချင်ရင် (/send စာသား)
+      // စာသားချည်းပဲ အမြန်ပို့ချင်ရင် (/send စာသား)
       if (text.startsWith("/send")) {
         const broadcastMsg = text.replace("/send", "").trim();
         if (!broadcastMsg) {
           await sendMessage(
             chatId,
-            "📌 <b>Post / ပုံ / စာ Share လုပ်နည်း:</b>\n\n" +
-            "၁။ Channel Post (သို့) ပုံ+စာ ကို ဒီ Bot ဆီ အရင်ပို့ပါ (Forward လုပ်ပါ)။\n" +
-            "၂။ အဲဒီ Post ကို <b>Reply</b> ပြန်ပြီး <code>/share</code> လို့ ရိုက်ပို့လိုက်ပါ (User အကုန်လုံးဆီ တန်းရောက်သွားပါမယ်)။\n\n" +
-            "<i>(ရိုးရိုးစာသားချည်းပဲဆိုရင် <code>/send စာသား</code> လို့လည်း ပို့လို့ရပါတယ်)</i>"
+            "📌 <b>Button ပါတဲ့ Post Share လုပ်နည်း:</b>\n\n" +
+            "၁။ Post ကို Bot ဆီ အရင်ပို့ပါ။\n" +
+            "၂။ အဲဒီ Post ကို <b>Reply</b> ပြန်ပြီး <code>/share</code> လို့ ရိုက်လိုက်ပါ (Default Button အလိုလို တပ်ပေးပါမယ်)။\n\n" +
+            "💡 <i>တခြား Link ပြောင်းတပ်ချင်ရင်:</i>\n" +
+            "<code>/share ခလုတ်စာသား | https://t.me/link</code>"
           );
           return res.status(200).json({ ok: true });
         }
@@ -171,8 +191,8 @@ export default async function handler(req, res) {
   return res.status(200).json({ ok: true });
 }
 
-// Post တစ်ခုလုံး (ပုံ/ဗီဒီယို/စာ/Button) ကို User အားလုံးဆီ Copy လုပ်ပို့ပေးမယ့် Function
-async function broadcastPost(adminChatId, fromChatId, messageId) {
+// Post + Button ကို User အားလုံးဆီ Copy လုပ်ပို့ပေးမယ့် Function
+async function broadcastPost(adminChatId, fromChatId, messageId, replyMarkup) {
   const usersObj = await firebaseRequest("users");
   if (!usersObj) {
     await sendMessage(adminChatId, "Bot ထဲမှာ User မရှိသေးပါ။");
@@ -180,7 +200,7 @@ async function broadcastPost(adminChatId, fromChatId, messageId) {
   }
 
   const userIds = Object.keys(usersObj);
-  await sendMessage(adminChatId, `⏳ User (${userIds.length}) ယောက်ဆီ Post စတင် Share နေပါပြီ...`);
+  await sendMessage(adminChatId, `⏳ User (${userIds.length}) ယောက်ဆီ Button ပါတဲ့ Post စတင် Share နေပါပြီ...`);
 
   let successCount = 0;
   let failCount = 0;
@@ -192,7 +212,8 @@ async function broadcastPost(adminChatId, fromChatId, messageId) {
       body: JSON.stringify({
         chat_id: uid,
         from_chat_id: fromChatId,
-        message_id: messageId
+        message_id: messageId,
+        reply_markup: replyMarkup
       })
     });
     const data = await res.json();
@@ -204,7 +225,7 @@ async function broadcastPost(adminChatId, fromChatId, messageId) {
     adminChatId,
     `✅ <b>Post Share ပြီးပါပြီ!</b>\n\n` +
     `📨 အောင်မြင်: <b>${successCount}</b> ယောက်\n` +
-    `❌ မအောင်မြင် (Block ထားသူ): <b>${failCount}</b> ယောက်`
+    `❌ မအောင်မြင်: <b>${failCount}</b> ယောက်`
   );
 }
 
